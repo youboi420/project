@@ -1,73 +1,107 @@
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <string.h>
-#include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "../includes/headers.h"
 
 // pretty sure it's to use the pcap lib
 // #include <ctype.h>
 
-#define PATH_LIMIT 256
-
-enum OpCode { OP_RRQ = 1, OP_WRQ, OP_DATA, OP_ACK, OP_ERROR };
-/*
-    functions sig
-*/
-FILE* open_requested_file(char filename[], char folder[]);
-FILE* handle_read_rqst(char filename[], char mode[], char packet[], char folder[]);
-void prepare_error_packet(unsigned short errCode, char errMsg[], char packet[]);
-int is_block_num_ack(char packet[], unsigned short blockNumber);
-int is_filename_valid(char filename[]);
-void exit_prog();
-int check_error(int f);
-
 int main(int argc, char* argv[])
 {
-    char receivedPacket[516] = "\0", requestedFilename[50] = "\0", requestedMode[50] = "\0", previousPacket[516] = "\0";
-    int serverSocket, packetSize = 512, net_flag;
+    char receivedPacket[PACKET_SIZE] = "\0", requestedFilename[50] = "\0", requestedMode[50] = "\0", previousPacket[PACKET_SIZE] = "\0";
+    int serverSocket, packetSize = PACKET_SIZE-4, net_flag; /*for flags*/ 
     unsigned short blockNumber = 1;
     unsigned short timeoutCounter = 0;
     unsigned short potentialError = 1;
-
     FILE* requestedFile = NULL;
-
     struct sockaddr_in server, client;
-    serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
-
-    // config the server struct
-    memset(&server, 0, sizeof(server));
-    server.sin_family = AF_INET;
-    server.sin_addr.s_addr = htonl(INADDR_ANY);
-    server.sin_port = htons(atoi(argv[1]));
-    net_flag = bind(serverSocket, (struct sockaddr*)&server, (socklen_t)sizeof(server));
     
-    if(check_error(net_flag)) exit_prog();
+    if (argc == 3){
+        serverSocket = socket(AF_INET, SOCK_DGRAM, 0);
+        // config the server struct
+        memset(&server, 0, sizeof(server));
+        
+        server.sin_family = AF_INET;
+        server.sin_addr.s_addr = htonl(INADDR_ANY);
+        server.sin_port = htons(atoi(argv[1]));
+        
+        net_flag = bind(serverSocket, (struct sockaddr*)&server, (socklen_t)sizeof(server));
+        if(check_error(net_flag)) exit_prog();
+
+        
+    } else {
+        error("incorrect number of parameters");
+    }
 }
 
-void buildFilePath(char filename[], char folder[], char fullPath[])
+FILE* handle_read_rqst(char filename[], char mode[], char packet[], char folder[])
 {
-    strcat(fullPath, "../");
-    strcat(fullPath, folder);
-    strcat(fullPath, "/");
-    strcat(fullPath, filename);
+    int file_idx = 2;
+    FILE* file = NULL;
+    int i = 0;
+
+    for (; packet[file_idx] != '\0'; file_idx++) {
+        filename[file_idx - 2] = packet[file_idx];
+    }
+    filename[file_idx] = '\0';
+    file_idx++;
+    for (; packet[file_idx] != '\0'; file_idx++) {
+        mode[i] = packet[file_idx];
+        i++;
+    }
+    mode[i] = '\0';
+    if (is_filename_valid(filename)) {
+        file = open_requested_file(filename, folder);
+    }
+    if (file) {
+        okay("starting transmission of packets\n");
+    }
+    return file;
 }
 
 FILE* open_requested_file(char filename[], char folder[])
 {
     // limit the path to PATH_LIMIT and initilize it to \0
-    char fullPath[PATH_LIMIT] = "\0";
+    char full_path[PATH_LIMIT] = "\0";
+    FILE* file;
+    
     // build the full path 
-    buildFilePath(filename, folder, fullPath);
-    printf("Path requested: \"%s\"\n", fullPath);
-    FILE* file = fopen(fullPath, "r");
-
+    build_file_path(filename, folder, full_path);
+    okay("path requested: \"%s\"\n", full_path);
+    file = fopen(full_path, "r");
+    
     if (file) {
         return file;
     } else {
         return NULL;
     }
+}
+
+FILE* handle_packet(char packet[], unsigned short* block_number, unsigned short* potential_err, FILE* file, char filename[], char mode[], char folder[], char clientIP[])
+{
+    unsigned short op_code = packet[1];
+    switch (op_code) {
+        case OP_RRQ:
+            okay("Read request received from client: %s\n", clientIP);
+            file = handle_read_rqst(filename, mode, packet, folder);
+            break;
+        case OP_WRQ:
+            okay("Write request received from client: %s\n", clientIP);
+            file = NULL;
+            (*potential_err) = 3;
+            break;
+        case OP_ACK:
+            if (is_block_num_ack(packet, block_number[0])) {
+                (*block_number)++;
+            } else {
+                (*potential_err) = 2;
+            }
+            break;
+        case OP_ERROR:
+            error("error code %d: %s\n", packet[3], (packet + 4));
+        default:
+            (*potential_err) = 0;
+            file = NULL;
+            break;
+    }
+    return file;
 }
 
 int check_error(int f)
@@ -81,83 +115,52 @@ int is_filename_valid(char filename[])
     return 0;
 }
 
-FILE* handlePacket(char packet[], unsigned short* blockNumber, unsigned short* potentialError, FILE* file, char filename[], char mode[], char folder[], char clientIP[])
+int is_block_num_ack(char packet[], unsigned short block_number)
 {
-    unsigned short opCode = packet[1];
-    switch (opCode) {
-        case OP_RRQ:
-            printf("Read request received from client: %s\n", clientIP);
-            file = handle_read_rqst(filename, mode, packet, folder);
-            break;
-        case OP_WRQ:
-            printf("Write request received from client: %s\n", clientIP);
-            file = NULL;
-            (*potentialError) = 3;
-            break;
-        case OP_ACK:
-            if (is_block_num_ack(packet, blockNumber[0])) {
-                (*blockNumber)++;
-            } else {
-                (*potentialError) = 2;
-            }
-            break;
-        case OP_ERROR:
-            printf("Error code %d: %s\n", packet[3], (packet + 4));
-        default:
-            (*potentialError) = 0;
-            file = NULL;
-            break;
-    }
-
-    return file;
-}
-
-int is_block_num_ack(char packet[], unsigned short blockNumber)
-{
-    // Extract the block number echo from the TFTP packet
-    unsigned short blockNumberEcho = (packet[2] << 8) | (packet[3] & 0xFF);
+    // Extract the block number echo from the TFTP packet using shift<<8 | (mask)
+    unsigned short block_number_echo = (packet[2] << 8) | (packet[3] & 0xFF);
     // Check if the extracted block number echo matches the expected block number
-    return (blockNumberEcho == blockNumber) ? 1 : 0;
+    return (block_number_echo == block_number) ? 1 : 0;
 }
 
-FILE* handle_read_rqst(char filename[], char mode[], char packet[], char folder[])
+void build_file_path(char filename[], char folder[], char full_path[])
 {
-    int fileIdx = 2;
-    for (; packet[fileIdx] != '\0'; fileIdx++) {
-        filename[fileIdx - 2] = packet[fileIdx];
-    }
-    filename[fileIdx] = '\0';
-
-    fileIdx++;
-    int i = 0;
-    for (; packet[fileIdx] != '\0'; fileIdx++) {
-        mode[i] = packet[fileIdx];
-        i++;
-    }
-    mode[i] = '\0';
-
-    FILE* file = NULL;
-    if (is_filename_valid(filename)) {
-        file = open_requested_file(filename, folder);
-    }
-
-    if (file) {
-        printf("Starting transmission of packets\n");
-    }
-
-    return file;
+    strcat(full_path, "../");
+    strcat(full_path, folder);
+    strcat(full_path, "/");
+    strcat(full_path, filename);
 }
 
-void prepare_error_packet(unsigned short errCode, char errMsg[], char packet[]) 
+void prepare_error_packet(unsigned short err_code, char err_msg[], char packet[]) 
 {
+    unsigned int i = 4;
     packet[0] = 0;
     packet[1] = OP_ERROR;
     packet[2] = 0;
-    packet[3] = errCode;
-
-    unsigned int i = 4;
-    for (; errMsg[i - 4] != '\0'; i++) {
-        packet[i] = errMsg[i - 4];
+    packet[3] = err_code;
+    // until the end of the err msg
+    for (; err_msg[i - 4] != '\0'; i++) {
+        packet[i] = err_msg[i - 4];
     }
     packet[i] = '\0';
+}
+
+int prepare_data_packet(unsigned short block_num, FILE* file, char packet[])
+{
+    char first_byte = block_num >> 8;
+    char second_byte = block_num;
+    int read_elements;
+
+    packet[0] = 0;
+    packet[1] = OP_DATA;
+    packet[2] = first_byte;
+    packet[3] = second_byte;
+    read_elements = fread(packet + 4, 1, 512, file);
+
+    return read_elements;
+}
+
+void exit_prog(){
+    error("program failed");
+    exit(EXIT_FAILURE);
 }
