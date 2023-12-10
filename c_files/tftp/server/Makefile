@@ -15,7 +15,8 @@ init:
 	mkdir $(TEST_PATH)
 
 $(OBJECT): $(SRC) $(HEADERS)
-	gcc $(SRC) -I $(HEADERS) -o $(OBJECT)
+	gcc $(SRC) -I $(HEADERS) -o $(OBJECT) 
+#	gcc $(SRC) -I $(HEADERS) -o $(OBJECT) $(FLAGS)
 
 # clear: $(SRC) $(HEADERS)
 # 	rm $(OBJECT)

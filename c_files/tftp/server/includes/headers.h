@@ -12,7 +12,7 @@
 #define PACKET_ACK_SIZE 4
 #define STR_FILE_LIMIT 50 
 #define PACKET_DATA_SIZE 512
-#define TIMEOUT_LIMIT 10
+#define TIMEOUT_LIMIT 5
 enum OP_CODES 
 {
     OP_RRQ = 1,
@@ -93,6 +93,12 @@ void prepare_error_packet(unsigned short err_code, char err_msg[], char packet[]
  */
 void build_file_path(char filename[], char folder[], char fullPath[]);
 
+void extract_names(char filename[], char mode[], char packet[]);
+
+void prepare_ack_packet(unsigned short blockno, char packet[]);
+
+void wrq_func(socklen_t len, int n, FILE * file, char packet[], int server_sock, struct sockaddr_in client);
+
 /**
  * @brief like prepare error packet. it prepares the packet to send with the data (file content)
  * and the block number 
@@ -112,6 +118,7 @@ int prepare_data_packet(unsigned short blockNumber, FILE* file, char packet[]);
  * @return int returns 1 if the block is acked otherwise 0.
  */
 int is_block_num_ack(char packet[], unsigned short blockNumber);
+
 
 /**
  * @brief checks if the file contains a '/'

@@ -1,15 +1,18 @@
 #include "../includes/headers.h"
+#include <string.h>
 
 int main(int argc, char *argv[])
 {
-	/* 	 Initialization of recieved packet from server
-	 Is 4B + 512B = 516B (header and data sections)
-	 Block number to keep track of data packets consecutively
-	 Program times out when value reaches TIMEOUT_LIMIT tries on same packet */
-	char packet[PACKET_SIZE] = "\0", prev_packet[PACKET_SIZE] = "\0", filename[STR_FILE_LIMIT] = "\0", mode[STR_FILE_LIMIT] = "\0";
+	/* 	
+		Initialization of recieved packet from server
+		Is 4B + 512B = 516B (header and data sections)
+		Block number to keep track of data packets consecutively
+		Program times out when value reaches TIMEOUT_LIMIT tries on same packet
+	*/
+	char packet[PACKET_SIZE + 1] = "\0", prev_packet[PACKET_SIZE] = "\0", filename[STR_FILE_LIMIT] = "\0", mode[STR_FILE_LIMIT] = "\0", err_msg[PACKET_DATA_SIZE] = "\0";
 	unsigned short blockno = 1, timeout_cnter = 0, potential_err, op_code = OP_END;
 	struct sockaddr_in server, client;
-	int packet_size = PACKET_DATA_SIZE, server_sock, flag = 0, connection;
+	int packet_size = PACKET_DATA_SIZE, server_sock, flag = 0, connection, write_count = -1;
 	socklen_t len;
 	ssize_t n;
 	FILE *file = NULL;
@@ -22,9 +25,6 @@ int main(int argc, char *argv[])
 		if (check_error(server_sock)) exit_prog("bind failed");
 		memset(&server, 0, sizeof(server));
 		server.sin_family = AF_INET;
-
-		// Converting arguments from host byte order to network byte order
-		// Then binding address to socket using arguments
 		server.sin_addr.s_addr = htonl(INADDR_ANY);
 		server.sin_port = htons(atoi(argv[1]));
 		flag = bind(server_sock, (struct sockaddr *)&server, (socklen_t)sizeof(server));
@@ -34,10 +34,11 @@ int main(int argc, char *argv[])
 		// {
 			// connection = rec(server_sock, 1);
 			// okay("got connection", timeout_cnter);
-			len = (socklen_t)sizeof(client);
-			n = recvfrom(server_sock, packet, sizeof(packet) - 1, 0, (struct sockaddr *)&client, &len);
 			while (packet_size == PACKET_DATA_SIZE)
 			{
+				/* possible fix to contain inside an if (n == 0) ??? */
+				len = (socklen_t)sizeof(client);
+				n = recvfrom(server_sock, packet, sizeof(packet) - 1, 0, (struct sockaddr *)&client, &len);
 				okay("got %zi", n);
 				packet[n] = '\0';
 				potential_err = 1;
@@ -45,8 +46,6 @@ int main(int argc, char *argv[])
 				if (op_code == OP_END) op_code = packet[1];
 				if (file == NULL)
 				{
-					// Form an error message appropriate to error type
-					char err_msg[PACKET_DATA_SIZE] = "\0";
 					if (potential_err == 1)
 						strcat(err_msg, "ERROR: File name and/or directory could not be resolved");
 					else
@@ -60,14 +59,39 @@ int main(int argc, char *argv[])
 					okay("op code is: %i", op_code);
 					if (op_code == OP_WRQ)
 					{
-						okay("not supperted yet - %p", file);
-						file = NULL;
-						// while(1)
-						// {
-						// 	/* get the file and write it to server folder argv[2] */
-						// }
+						prepare_ack_packet(0, packet);
+						if (check_error(sendto(server_sock, packet, PACKET_HEAD, 0, (struct sockaddr *)&client, sizeof(client)))) {
+							exit_prog("sendto failed");
+						}
+						while (1)
+						{
+							len = (socklen_t)sizeof(client);
+							n = recvfrom(server_sock, packet, sizeof(packet) - 1, 0, (struct sockaddr *)&client, &len);
+							if (check_error(n))
+							{
+								error("connection timed out?");
+								/* exit_prog(""); */
+								break;
+							}
+							packet[n+1] = '\0';
+							
+							write_count = fwrite(packet + PACKET_HEAD, 1, n - PACKET_HEAD, file);
+							if (write_count != n - PACKET_HEAD) exit_prog("Error writing to file");
+							prepare_ack_packet(blockno, packet);
+							if (check_error(sendto(server_sock, packet, (size_t)packet_size + PACKET_HEAD, 0, (struct sockaddr *)&client, len))) exit_prog("send failed");
+							
+							/* end writing while loop if EOF */
+							if (n < PACKET_DATA_SIZE + PACKET_HEAD)
+							{
+								okay("File transfer complete");
+								fclose(file);
+								file = NULL;
+								break;
+							}
+							blockno++;
+						}
+						packet_size = 0; /* to quit inner while loop */
 						break; /* exit the inner while loop */
-						packet_size = 0;
 					}
 					else
 					{
@@ -80,7 +104,7 @@ int main(int argc, char *argv[])
 				{
 					*packet = *prev_packet;
 					timeout_cnter++;
-					if (timeout_cnter >= 4)
+					if (timeout_cnter >= TIMEOUT_LIMIT)
 					{
 						prepare_error_packet(0, "ERROR: Transfer timed out", packet);
 						if (check_error(sendto(server_sock, packet, (size_t)packet_size + 4, 0, (struct sockaddr *)&client, len))) exit_prog("send failed");
@@ -95,9 +119,9 @@ int main(int argc, char *argv[])
 			if (file)
 			{
 				fclose(file);
+				okay("file was closed");
 			}
 			op_code = OP_END;
-			okay("while loop ended %p", file);
 			// packet_size = PACKET_DATA_SIZE;
 			// file = NULL;
 		// } /* end of outer while */
@@ -119,7 +143,7 @@ int write_data_packet(FILE *file, char packet[], int packet_size)
 FILE *handle_first_packet(char packet[], unsigned short *block_num, unsigned short *potential_err, FILE *file, char filename[], char mode[], char folder[], char IP[])
 {
 	unsigned short OP_code = packet[1];
-	okay("%hu\tfirst packet is: %s", OP_code ,&packet[1]);
+	okay("OP: %hu\tfirst packet is: %s", OP_code ,&packet[1]);
 	switch (OP_code)
 	{
 		case OP_RRQ:
@@ -154,32 +178,12 @@ FILE *handle_first_packet(char packet[], unsigned short *block_num, unsigned sho
 
 FILE *handle_read_rqst(char filename[], char mode[], char packet[], char folder[])
 {
-
-	int file_idx = 2, i = 0;
-	FILE *file = NULL;
-
-	for (; packet[file_idx] != '\0'; file_idx++)
-	{
-		filename[file_idx - 2] = packet[file_idx];
-	}
-	filename[file_idx] = '\0';
-
-	file_idx++;
-	for (; packet[file_idx] != '\0'; file_idx++)
-	{
-		mode[i] = packet[file_idx];
-		i++;
-	}
-	mode[i] = '\0';
-
-	if (is_filename_valid(filename))
-	{
-		file = open_file(filename, folder, mode);
-	}
-
+	FILE *file = NULL; 
+	extract_names(filename, mode, packet);
+	file = open_file(filename, folder, mode);
 	if (file)
 	{
-		okay("Starting transmission of packets\n");
+		okay("Starting transmission {READING TO CLIENT}of packets\n");
 	}
 	return file;
 }
@@ -187,18 +191,24 @@ FILE *handle_read_rqst(char filename[], char mode[], char packet[], char folder[
 FILE *open_file(char filename[], char folder[], char mode[])
 {
 	char full_path[100] = "\0";
-	FILE *file;
+	FILE *file = NULL;
 
 	build_file_path(filename, folder, full_path);
-	okay("Path requested: \"%s\"\n", full_path);
-	file = fopen(full_path, "r");
-	return (file != NULL) ? file : NULL;
+	if (is_filename_valid(filename))
+		file = fopen(full_path, mode); /* mode instead of 'r' */
+
+	return file;
 }
 
 FILE* handle_write_rqst(char filename[], char mode[], char packet[], char folder[])
 {
-	okay("file: %s|%s\tmode: %s", filename, folder, mode);
-	return NULL;
+	FILE * file = NULL;
+	extract_names(filename, mode, packet);
+	okay("got: %s/%s - mode: %s", folder, filename, mode);
+	file = open_file(filename, folder, mode);
+	if (file)
+		okay("Starting transmission {WRITING FROM CLIENT} of packets\n");
+	return file;
 }
 void prepare_error_packet(unsigned short err_code, char err_msg[], char packet[])
 {
@@ -218,6 +228,7 @@ void prepare_error_packet(unsigned short err_code, char err_msg[], char packet[]
 
 void build_file_path(char filename[], char folder[], char full_path[])
 {
+	/*strcat(full_path, "../"); */
 	strcat(full_path, folder);
 	strcat(full_path, "/");
 	strcat(full_path, filename);
@@ -253,18 +264,55 @@ int is_block_num_ack(char packet[], unsigned short block_num)
 int is_filename_valid(char filename[])
 {
 	if (filename)
-	{
 		if (strstr(filename, "/") == NULL)
-		{
 			return 1;
-		}
-	}
 	return 0;
 }
 
 int check_error(int f)
 {
 	return (f < 0) ? 1 : 0;
+}
+
+void extract_names(char filename[], char mode[], char packet[])
+{
+	int file_idx = 2, i = 0;
+	unsigned short op_c = packet[1];
+
+	for (; packet[file_idx] != '\0'; file_idx++)
+		filename[file_idx - 2] = packet[file_idx];
+
+	filename[file_idx] = '\0';
+	/* okay("extracted: %s", filename); */
+	file_idx++;
+	for (; packet[file_idx] != '\0'; file_idx++, i++)
+		mode[i] = packet[file_idx];
+	/* if (strcmp(mode, "netascii") == 0)
+		okay("text mode: %s", mode);
+	else if (strcmp(mode, "binary") == 0)
+		okay("bin mode: %s", mode); */
+	mode[i] = '\0';
+
+	if ((strcmp(mode, "netascii") == 0) && op_c == OP_RRQ)
+		strcpy(mode, "r");
+	else if ((strcmp(mode, "octet") == 0) && op_c == OP_RRQ)
+		strcpy(mode, "rb");
+	else if ((strcmp(mode, "netascii") == 0) && op_c == OP_WRQ)
+		strcpy(mode, "wb");
+	else if ((strcmp(mode, "octet") == 0) && op_c == OP_WRQ)
+		strcpy(mode, "wb");
+	okay("file: %s\tmode is: %s", filename,mode);
+}
+
+void prepare_ack_packet(unsigned short blockno, char packet[])
+{
+    char one = blockno >> 8;
+    char two = blockno;
+
+    packet[0] = 0;
+    packet[1] = OP_ACK;
+    packet[2] = one;
+    packet[3] = two;
 }
 
 void exit_prog(char err_msg[])
