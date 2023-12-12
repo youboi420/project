@@ -1,5 +1,4 @@
 #include "../includes/headers.h"
-#include <string.h>
 
 int main(int argc, char *argv[])
 {
@@ -22,7 +21,7 @@ int main(int argc, char *argv[])
 		okay("Server listening on port: %s\n", argv[1]);
 	
 		server_sock = socket(AF_INET, SOCK_DGRAM, 0);
-		if (check_error(server_sock)) exit_prog("bind failed");
+		if (check_error(server_sock)) exit_prog("sock asign failed");
 		memset(&server, 0, sizeof(server));
 		server.sin_family = AF_INET;
 		server.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -39,7 +38,6 @@ int main(int argc, char *argv[])
 				/* possible fix to contain inside an if (n == 0) ??? */
 				len = (socklen_t)sizeof(client);
 				n = recvfrom(server_sock, packet, sizeof(packet) - 1, 0, (struct sockaddr *)&client, &len);
-				okay("got %zi", n);
 				packet[n] = '\0';
 				potential_err = 1;
 				file = handle_first_packet(packet, &blockno, &potential_err, file, filename, mode, argv[2], inet_ntoa(client.sin_addr));
@@ -56,7 +54,6 @@ int main(int argc, char *argv[])
 				}
 				if (potential_err != 2)
 				{
-					okay("op code is: %i", op_code);
 					if (op_code == OP_WRQ)
 					{
 						prepare_ack_packet(0, packet);
@@ -73,9 +70,9 @@ int main(int argc, char *argv[])
 								/* exit_prog(""); */
 								break;
 							}
-							packet[n+1] = '\0';
-							
-							write_count = fwrite(packet + PACKET_HEAD, 1, n - PACKET_HEAD, file);
+							packet[n] = '\0';
+							if ((strcmp(mode, "wb"))) fwrite(packet + PACKET_HEAD, 1, n - PACKET_HEAD, file);
+							else write_count = write_data_packet(file, packet, n-PACKET_HEAD);
 							if (write_count != n - PACKET_HEAD) exit_prog("Error writing to file");
 							prepare_ack_packet(blockno, packet);
 							if (check_error(sendto(server_sock, packet, (size_t)packet_size + PACKET_HEAD, 0, (struct sockaddr *)&client, len))) exit_prog("send failed");
@@ -133,11 +130,18 @@ int main(int argc, char *argv[])
 	return EXIT_SUCCESS;
 }
 
-int write_data_packet(FILE *file, char packet[], int packet_size)
+int write_data_packet(FILE *file, char packet[], size_t n)
 {
-    size_t n = fwrite(packet + PACKET_HEAD, 1, packet_size - PACKET_HEAD, file);
+    size_t i;
+	for (i = 0; i < n; i++)
+	{
+		okay("%p|%c", file, packet[PACKET_HEAD + i]);
+		fputc(packet[PACKET_HEAD + i], file);
+		/* code */
+	}
+	
     okay("Written %zu bytes. \tReceived data for write request: [%s]\n", n , packet + PACKET_HEAD);
-	return n;
+	return i;
 }
 
 FILE *handle_first_packet(char packet[], unsigned short *block_num, unsigned short *potential_err, FILE *file, char filename[], char mode[], char folder[], char IP[])
@@ -204,7 +208,6 @@ FILE* handle_write_rqst(char filename[], char mode[], char packet[], char folder
 {
 	FILE * file = NULL;
 	extract_names(filename, mode, packet);
-	okay("got: %s/%s - mode: %s", folder, filename, mode);
 	file = open_file(filename, folder, mode);
 	if (file)
 		okay("Starting transmission {WRITING FROM CLIENT} of packets\n");
@@ -301,7 +304,7 @@ void extract_names(char filename[], char mode[], char packet[])
 		strcpy(mode, "wb");
 	else if ((strcmp(mode, "octet") == 0) && op_c == OP_WRQ)
 		strcpy(mode, "wb");
-	okay("file: %s\tmode is: %s", filename,mode);
+	okay("file: [%s]\tmode is: [%s]", filename,mode);
 }
 
 void prepare_ack_packet(unsigned short blockno, char packet[])

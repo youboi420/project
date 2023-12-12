@@ -85,6 +85,8 @@
     "ios": "c",
     "locale": "c",
     "complex": "c",
-    "__functional_03": "c"
+    "__functional_03": "c",
+    "cstdlib": "c",
+    "socket.h": "c"
   }
 }
