@@ -56,6 +56,7 @@ int main(int argc, char *argv[])
 				{
 					if (op_code == OP_WRQ)
 					{
+						okay("huh?");
 						prepare_ack_packet(0, packet);
 						if (check_error(sendto(server_sock, packet, PACKET_HEAD, 0, (struct sockaddr *)&client, sizeof(client)))) {
 							exit_prog("sendto failed");
@@ -108,6 +109,7 @@ int main(int argc, char *argv[])
 						exit_prog("Transfer timed out");
 					}
 				}
+				okay("packet: [%s]", packet);
 				if (check_error(sendto(server_sock, packet, (size_t)packet_size + PACKET_HEAD, 0, (struct sockaddr *)&client, len)) && op_code == OP_RRQ) exit_prog("send failed");
 			}
 			
@@ -135,7 +137,6 @@ int write_data_packet(FILE *file, char packet[], size_t n)
     size_t i;
 	for (i = 0; i < n; i++)
 	{
-		okay("%p|%c", file, packet[PACKET_HEAD + i]);
 		fputc(packet[PACKET_HEAD + i], file);
 		/* code */
 	}
@@ -242,7 +243,7 @@ int prepare_data_packet(unsigned short blockno, FILE *file, char packet[])
 	// trick to get the two chars by manipulating bits to convert 2B short into two characters
 	char one = blockno >> 8;
 	char two = blockno;
-	int read_elems;
+	int read_elems = -1;
 
 	packet[0] = 0;
 	packet[1] = OP_DATA; // OP code: 2B

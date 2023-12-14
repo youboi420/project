@@ -41,12 +41,17 @@ enum ERR_CODES
 
 /* functions sigs */
 
-int check_error(int f);
 void handle_args(const char *argv[], char ip[], char port[], char mode[], char filename[], char operation[]);
 void exit_prog(char err_msg[]);
 void get_local_mode(char mode[], int op);
-int prep_packet(char filename[], char mode[], char packet_ts[], int op);
+void prepare_ack_packet(unsigned short blockno, char packet[]);
+
 FILE * open_file(char filename[], char mode[]);
+
+int check_error(int f);
+int prep_packet(char filename[], char mode[], char packet_ts[], int op);
+int is_block_num_ack(char packet[], unsigned short block_num);
+int handle_rrq_packet(char packet_to_recv[], unsigned short * bloackno, FILE * file, size_t n);
 
 /**
  * @brief print's the usage of this program
