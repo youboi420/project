@@ -2,7 +2,7 @@ from scapy.all import *
 # Create a list of packets
 packets = []
 # Generate some example packets
-for i in range(100):
+for i in range(200):
     # Create an Ethernet frame with an IPv4 packet
     eth_packet = Ether(src="00:11:22:33:44:55", dst="AA:BB:CC:DD:EE:FF")
     ip_packet = IP(src="192.168.1.1", dst="10.0.0.1")

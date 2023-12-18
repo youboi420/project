@@ -24,6 +24,9 @@ int main(int argc, char const *argv[])
 
     handle_args(argv, ip, port, mode, filename, operation);
 
+    // okay("ip:%s:%s | mode: %s | fnm:%s | op:%s", ip, port, mode, filename, operation);
+    // exit(EXIT_SUCCESS);
+
     client_sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (check_error(client_sock)) exit_prog("sock asign failed");
     
@@ -34,24 +37,43 @@ int main(int argc, char const *argv[])
     
     if (strcmp(operation, "get") == 0)
     {
+        okay("mode get");
         /* the function  initilize the first packet to send for the read request */
         n = prep_packet(filename, mode, packet_to_send, OP_RRQ);
         flag = sendto(client_sock, packet_to_send, (size_t)(n), 0, (struct sockaddr*)&server_s, sizeof(server_s));
+        
+        memset(packet_to_send, 0, sizeof(packet_to_send));
         if (check_error(flag)) exit_prog("packet failed to send");
         get_local_mode(mode, OP_RRQ);
         file_ptr = open_file(filename, mode); /* opening file to write file from server */
         if (!file_ptr) exit_prog("given file is invalid");
-        
+        /* check op code for failure */
         while(packet_size == PACKET_DATA_SIZE) /* if we reached the EOF */
         {
             len = (socklen_t)sizeof(server_s);
             n = recvfrom(client_sock, packet_to_recv, sizeof(packet_to_recv), 0, (struct sockaddr *)&server_s, &len);
             packet_to_recv[n] = '\0';
+            op_code = packet_to_recv[1];
+            okay("got op code %hu", op_code);/* check op code for failure */
+            switch (op_code)
+            {
+                case OP_ERROR:
+                    error("[%s]", (&packet_to_recv[PACKET_HEAD]));
+                    exit_prog("transfer failed");
+                    break;
+        
+                case OP_ACK:
+                    okay("got ack not writing");
+                    break;
+
+                default:
+                    packet_size = handle_rrq_packet(packet_to_recv, &blockno, file_ptr, n - PACKET_HEAD);
+                    break;
+            }
             if (check_error(n)) exit_prog("recv failed");
 
-            packet_size = handle_rrq_packet(packet_to_recv, &blockno, file_ptr, n - PACKET_HEAD);
             prepare_ack_packet(blockno, packet_to_send);
-            if (check_error(sendto(client_sock, packet_to_send, (size_t)(packet_size + PACKET_HEAD),0 ,(struct sockaddr *) &server_s, len))) exit_prog("send ack failed");
+            if (check_error(sendto(client_sock, packet_to_send, (size_t)(PACKET_HEAD),0 ,(struct sockaddr *) &server_s, len))) exit_prog("send ack failed");
             blockno++;
         }
         fclose(file_ptr);
@@ -59,14 +81,15 @@ int main(int argc, char const *argv[])
     }
     else if (strcmp(operation, "put") == 0)
     {
+        okay("mode put");
         /* 
             the function will verify if theres such file and if so 
             it will initilize the first packet to send
-        */        
+        */
         n = prep_packet(filename, mode, packet_to_send, OP_WRQ);
         flag = sendto(client_sock, packet_to_send, (size_t)(n), 0, (struct sockaddr*)&server_s, sizeof(server_s));
         if (check_error(flag)) exit_prog("packet failed to send");
-        
+        memset(packet_to_send, 0, sizeof(packet_to_send));
         get_local_mode(mode, OP_WRQ);
         file_ptr = open_file(filename, mode);
         if (!file_ptr) exit_prog("given file is invalid");
@@ -97,7 +120,7 @@ void usage(void)
     printf("  <file>    : File to be transferred or processed.\n\n");
     printf("Example:\n");
     printf("  ./client 192.168.1.100 8080 get netascii data.txt\n");
-    printf("  ./client server.example.com 12345 put binary result.bin\n");
+    printf("  ./client server.example.com 12345 put octet result.bin\n");
 }
 
 void handle_args(const char *argv[], char ip[], char port[], char mode[], char filename[], char operation[])
@@ -135,12 +158,12 @@ void get_local_mode(char *mode, int op)
     if (op == OP_RRQ)
     {
         if (strcmp(mode, "netascii") == 0) strcpy(mode, "w");
-        else if (strcmp(mode, "binary") == 0) strcpy(mode, "wb");
+        else if (strcmp(mode, "octet") == 0) strcpy(mode, "wb");
     }
     else if (op == OP_WRQ)
     {
         if (strcmp(mode, "netascii") == 0) strcpy(mode, "r");
-        else if (strcmp(mode, "binary") == 0) strcpy(mode, "rb");
+        else if (strcmp(mode, "octet") == 0) strcpy(mode, "rb");
     }
 }
 
@@ -175,12 +198,11 @@ int prep_packet(char *filename, char *mode, char *packet_ts, int op)
     i += strlen(mode) + 1;
     // null termination
     packet_ts[i] = '\0';
-    for (int h = 0; h < i; h++)
+    /* for (int h = 0; h < i; h++)
     {
-        /* code */
         printf("%c", packet_ts[h]);
     }
-    printf("\n");
+    printf("\n"); */
     return i;
 }
 
@@ -189,7 +211,6 @@ int handle_rrq_packet(char packet_to_recv[], unsigned short * bloackno, FILE * f
     int i;
     for (i = 0; i < n; i++)
     {
-        okay("%c|%p", packet_to_recv[PACKET_HEAD + i], file);
         fputc(packet_to_recv[PACKET_HEAD + i], file);
     }
     return i;

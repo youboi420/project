@@ -56,7 +56,6 @@ int main(int argc, char *argv[])
 				{
 					if (op_code == OP_WRQ)
 					{
-						okay("huh?");
 						prepare_ack_packet(0, packet);
 						if (check_error(sendto(server_sock, packet, PACKET_HEAD, 0, (struct sockaddr *)&client, sizeof(client)))) {
 							exit_prog("sendto failed");
@@ -67,12 +66,12 @@ int main(int argc, char *argv[])
 							n = recvfrom(server_sock, packet, sizeof(packet) - 1, 0, (struct sockaddr *)&client, &len);
 							if (check_error(n))
 							{
-								error("connection timed out?");
+								error("connection timed out");
 								/* exit_prog(""); */
 								break;
 							}
 							packet[n] = '\0';
-							if ((strcmp(mode, "wb"))) fwrite(packet + PACKET_HEAD, 1, n - PACKET_HEAD, file);
+							if ((strcmp(mode, "wb") == 0)) fwrite(packet + PACKET_HEAD, 1, n - PACKET_HEAD, file);
 							else write_count = write_data_packet(file, packet, n-PACKET_HEAD);
 							if (write_count != n - PACKET_HEAD) exit_prog("Error writing to file");
 							prepare_ack_packet(blockno, packet);
@@ -109,7 +108,6 @@ int main(int argc, char *argv[])
 						exit_prog("Transfer timed out");
 					}
 				}
-				okay("packet: [%s]", packet);
 				if (check_error(sendto(server_sock, packet, (size_t)packet_size + PACKET_HEAD, 0, (struct sockaddr *)&client, len)) && op_code == OP_RRQ) exit_prog("send failed");
 			}
 			
@@ -178,6 +176,7 @@ FILE *handle_first_packet(char packet[], unsigned short *block_num, unsigned sho
 			file = NULL;
 			break;
 	}
+	okay("got file %s %s\t%p", filename, folder, file);
 	return file;
 }
 
