@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/home/groot/Documents/project/c_files/tftp/client/src",
-      "program": "/home/groot/Documents/project/c_files/tftp/client/src/build/Debug/outDebug",
+      "cwd": "/home/groot/Documents/project/c_files/pcap_raw_socket/src",
+      "program": "/home/groot/Documents/project/c_files/pcap_raw_socket/src/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

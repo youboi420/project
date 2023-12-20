@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
 								break;
 							}
 							packet[n] = '\0';
-							if ((strcmp(mode, "wb") == 0)) fwrite(packet + PACKET_HEAD, 1, n - PACKET_HEAD, file);
+							if ((strcmp(mode, "wb") == 0)) write_count = fwrite(packet + PACKET_HEAD, 1, n - PACKET_HEAD, file);
 							else write_count = write_data_packet(file, packet, n-PACKET_HEAD);
 							if (write_count != n - PACKET_HEAD) exit_prog("Error writing to file");
 							prepare_ack_packet(blockno, packet);
@@ -176,7 +176,6 @@ FILE *handle_first_packet(char packet[], unsigned short *block_num, unsigned sho
 			file = NULL;
 			break;
 	}
-	okay("got file %s %s\t%p", filename, folder, file);
 	return file;
 }
 
@@ -301,7 +300,7 @@ void extract_names(char filename[], char mode[], char packet[])
 	else if ((strcmp(mode, "octet") == 0) && op_c == OP_RRQ)
 		strcpy(mode, "rb");
 	else if ((strcmp(mode, "netascii") == 0) && op_c == OP_WRQ)
-		strcpy(mode, "wb");
+		strcpy(mode, "w");
 	else if ((strcmp(mode, "octet") == 0) && op_c == OP_WRQ)
 		strcpy(mode, "wb");
 	okay("file: [%s]\tmode is: [%s]", filename,mode);
@@ -312,6 +311,8 @@ void prepare_ack_packet(unsigned short blockno, char packet[])
     char one = blockno >> 8;
     char two = blockno;
 
+	// okay("ack: %hu|%hu", one, two);
+	
     packet[0] = 0;
     packet[1] = OP_ACK;
     packet[2] = one;

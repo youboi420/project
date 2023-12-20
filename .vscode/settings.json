@@ -87,6 +87,9 @@
     "complex": "c",
     "__functional_03": "c",
     "cstdlib": "c",
-    "socket.h": "c"
+    "socket.h": "c",
+    "my_utils.h": "c",
+    "if_ether.h": "c",
+    "unistd.h": "c"
   }
 }

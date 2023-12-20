@@ -8,7 +8,7 @@ int main(int argc, char const *argv[])
 {
     /* code */
     char packet_to_send[PACKET_SIZE + 1] = "\0", packet_to_recv[PACKET_SIZE + 1] = "\0" ,prev_packet[PACKET_SIZE] = "\0", filename[STR_FILE_LIMIT] = "\0", mode[STR_FILE_LIMIT] = "\0", err_msg[PACKET_DATA_SIZE] = "\0", port[PORT_LEN] = "\0", ip[INET_ADDRSTRLEN + 1],  operation[PACKET_HEAD] = "\0";
-	unsigned short blockno = 0, client_blockno = 0 ,timeout_cnter = 0, potential_err, op_code = OP_END;
+	unsigned short blockno = 0, blockno_echo = 0, client_blockno = 0 ,timeout_cnter = 0, potential_err, op_code = OP_END;
 	struct sockaddr_in server_s, client_s;
 	int packet_size = PACKET_DATA_SIZE, client_sock, flag = 1, connection, write_count = -1;
 	socklen_t len;
@@ -92,12 +92,76 @@ int main(int argc, char const *argv[])
         memset(packet_to_send, 0, sizeof(packet_to_send));
         get_local_mode(mode, OP_WRQ);
         file_ptr = open_file(filename, mode);
-        if (!file_ptr) exit_prog("given file is invalid");
+        if (!file_ptr)
+        {
+            packet_to_send[0] = 0;
+            packet_to_send[1] = OP_ERROR;
+            packet_to_send[2] = 0;
+            packet_to_send[3] = FILE_ERR;
+            strcpy(&packet_to_send[PACKET_HEAD],"[-] file error");
+            flag = sendto(client_sock, packet_to_send, (size_t)(n), 0, (struct sockaddr*)&server_s, sizeof(server_s));
+            if (check_error(flag)) exit_prog("send failed");
+            exit_prog("given file is invalid");
+        }
+        else
+        {
+            okay("getting first ack echo");
+            flag = recvfrom(client_sock, packet_to_recv, sizeof(packet_to_recv), 0, (struct sockaddr *)&server_s, &len);
+            if (check_error(flag)) exit_prog("recv from failed"); 
+            if (packet_to_recv[1] == OP_ERROR)
+            {
+                error("[%s]", &packet_to_recv[PACKET_HEAD]);
+                exit_prog("server send op code error");
+            }
+            blockno++;
+        }
 
         while (1)
         {
+            n = prepare_data_packet(blockno,  file_ptr, packet_to_send);
             /* send file */
+            flag = sendto(client_sock, packet_to_send, (size_t)(n + PACKET_HEAD), 0, (struct sockaddr *)&server_s, sizeof(server_s));
+            if (check_error(flag)) exit_prog("send failed");
+            
+            /* process ack */
+            flag = recvfrom(client_sock, packet_to_recv, sizeof(packet_to_recv), 0, (struct sockaddr *)&server_s, &len);
+            if (check_error(flag)) exit_prog("recv from failed");
+            op_code = packet_to_recv[1];
+            switch (op_code)
+            {
+                case OP_ERROR:
+                    error("[%s]", &packet_to_recv[PACKET_HEAD]);
+                    exit_prog("server send op code error");
+                    break;
+                default:
+                    /* ack */
+                    if (is_block_num_ack(packet_to_recv, blockno)) blockno++;
+                    else
+                    {
+                        /* resend the packet and continue */
+                        // while(!(is_block_num_ack(packet_to_recv, blockno)))
+                        // {
+                            error("reseding");
+                            flag = sendto(client_sock, packet_to_send, (size_t)(n + PACKET_HEAD), 0, (struct sockaddr *)&server_s, sizeof(server_s));
+                            if (check_error(flag)) exit_prog("send failed");
+                            flag = recvfrom(client_sock, packet_to_recv, sizeof(packet_to_recv), 0, (struct sockaddr *)&server_s, &len);
+                            if (check_error(flag)) exit_prog("recv from failed");
+                        // }
+                        timeout_cnter++;
+                    }
+                    if (timeout_cnter >= TIMEOUT_LIMIT)
+                    {
+                        exit_prog("transfred failed reached-timeout-limit");
+                    }
+                    break;
+            }
+            if (n < PACKET_DATA_SIZE)
+            {
+                okay("Reached EOF");
+                break;
+            }
             /* dont forget to blockno++ if the packet is OP_ACK and i_blk_n_ack() */
+            /* check if acked. if so inc by 1 else. resend the packet. and inc timeout_counter by 1 */
         }
     }
     else
@@ -224,11 +288,30 @@ int check_error(int f)
 int is_block_num_ack(char packet[], unsigned short block_num)
 {
 	unsigned short block_num_echo = (packet[2] << 8) | (packet[3] & 0xFF);
+    okay("local: %hu|server: %hu", block_num, block_num_echo);
+
 	if (block_num_echo == block_num)
 	{
 		return 1;
 	}
 	return 0;
+}
+
+int prepare_data_packet(unsigned short blockno, FILE *file, char packet[])
+{
+	// trick to get the two chars by manipulating bits to convert 2B short into two characters
+	char one = blockno >> 8;
+	char two = blockno;
+	int read_elems = -1;
+
+	packet[0] = 0;
+	packet[1] = OP_DATA; // OP code: 2B
+	packet[2] = one;
+	packet[3] = two; // Blockno: 2B
+
+	read_elems = fread(packet + PACKET_HEAD, 1, PACKET_DATA_SIZE, file);
+	okay("sending %i:%p:%s", read_elems, file, &packet[PACKET_HEAD]);
+	return read_elems;
 }
 
 FILE * open_file(char filename[], char mode[])

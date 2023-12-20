@@ -99,9 +99,9 @@ void prepare_ack_packet(unsigned short blockno, char packet[]);
 
 /**
  * @brief like prepare error packet. it prepares the packet to send with the data (file content)
- * and the block number 
- * 
- * @param blockNumber 
+ * and the block number
+ *
+ * @param blockNumber
  * @param file the file pointer
  * @param packet the packet to prepare
  * @return int returns how much data is read from file pointer
