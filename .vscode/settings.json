@@ -90,6 +90,24 @@
     "socket.h": "c",
     "my_utils.h": "c",
     "if_ether.h": "c",
-    "unistd.h": "c"
-  }
+    "unistd.h": "c",
+    "string.h": "c",
+    "ethernet.h": "c",
+    "udp.h": "c",
+    "hash_table.h": "c",
+    "host_hash_table.h": "c",
+    "tcp.h": "c",
+    "compare": "cpp",
+    "cstdint": "cpp",
+    "bit": "c",
+    "concepts": "c",
+    "type_traits": "c",
+    "__nullptr": "c",
+    "target": "c",
+    "search.h": "c",
+    "conversations.h": "c",
+    "json.h": "c",
+    "ip.h": "c"
+  },
+  "C_Cpp.errorSquiggles": "disabled"
 }

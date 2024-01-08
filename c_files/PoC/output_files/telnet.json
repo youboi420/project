@@ -1,0 +1,14 @@
+{
+  "conversations":[
+    {
+      "conv_id":0,
+      "conv_type":"TCP",
+      "source_ip":"192.168.0.2",
+      "destination_ip":"192.168.0.1",
+      "source_port":1254,
+      "destination_port":23,
+      "packets_from_a_to_b":159,
+      "packets_from_b_to_a":113
+    }
+  ]
+}
