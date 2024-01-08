@@ -24,7 +24,8 @@ conv_s conversations_arr[MAX_CONVERSATIONS];
 unsigned int conv_hash_g;
 uint16_t conv_id_tcp_g = 0, conv_id_udp_g = 0;
 
-void init_list(packet_node_s ** root){
+void init_list(packet_node_s ** root)
+{
     *root = NULL;
 }
 
