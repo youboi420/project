@@ -1,7 +1,9 @@
-
+#include <netinet/in.h>
 #include <netinet/tcp.h>
 
 #define MAX_EXEP 1024
+
+#define ETH_HEADER_SIZE 14
 
 typedef enum packet_type_e
 {
@@ -11,6 +13,7 @@ typedef enum packet_type_e
     PSH_P_TYPE = TH_PUSH,
     ACK_P_TYPE = TH_ACK,
     URG_P_TYPE = TH_URG,
+    ERR_P_TYPE = -1
     // ECE_P_TYPE = TH_ECE,
     // CWR_P_TYPE = TH_CWR,
 } packet_type_e;
@@ -25,6 +28,7 @@ typedef enum packet_exep_e
 } packet_exep_e;
 
 typedef struct packet_exep_node_s{
+    struct in_addr src_ip, dest_ip;
     packet_exep_e exep;
     uint32_t packet_location;
 }packet_exep_node_s;

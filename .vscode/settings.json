@@ -107,7 +107,8 @@
     "search.h": "c",
     "conversations.h": "c",
     "json.h": "c",
-    "ip.h": "c"
+    "ip.h": "c",
+    "tcp_exep.h": "c"
   },
   "C_Cpp.errorSquiggles": "disabled"
 }

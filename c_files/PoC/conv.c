@@ -17,7 +17,6 @@
 #define error(msg, ...)printf("[-] " msg "\n", ##__VA_ARGS__)
 #define MAX_CONVERSATIONS 1000
 #define HASH_CONST 5381
-#define ETH_HEADER_SIZE 14
 
 /* GLOBALS */
 conv_s conversations_arr[MAX_CONVERSATIONS];
@@ -56,8 +55,6 @@ void print_output_to_file(conv_s conversations[MAX_CONVERSATIONS], char * filena
     {
         error("error opening the file %s", out_filename);
         free(out_filename);
-        fclose(tcp_file);
-        fclose(udp_file);
         return;
     }
     /* SOF TCP FILE */
@@ -100,7 +97,7 @@ void print_output_to_file(conv_s conversations[MAX_CONVERSATIONS], char * filena
 
 
 
-int add_packet_to_list(packet_node_s **root, const u_char * original_packet, size_t packet_size, int id)
+int add_packet_to_list(packet_node_s **root, const u_char * original_packet, size_t packet_size, uint32_t id)
 {
     int flag = 1, index;
     packet_node_s * node = malloc(sizeof(packet_node_s)), *temp = *root;
